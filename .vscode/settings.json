@@ -1,5 +1,0 @@
-{
-    "yaml.schemas": {
-        "https://gitlab.com/gitlab-org/cluster-integration/gitlab-agent/-/raw/master/pkg/agentcfg/agentcfg_schemas/gitlab.agent.agentcfg.ConfigurationFile.jsonschema.bundle.json": "file:///c%3A/Users/renuv/OneDrive/Desktop/iicpc-platform/k8s/fleet.yaml"
-    }
-}
