@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleet-deployment
+spec:
+  replicas: 1 # You can increase this number to simulate thousands of bots!
+  selector:
+    matchLabels:
+      app: fleet
+  template:
+    metadata:
+      labels:
+        app: fleet
+    spec:
+      containers:
+      - name: fleet
+        image: iicpc-platform:latest # Our new all-in-one image
+        imagePullPolicy: IfNotPresent
+        command: ["./fleet-binary"] # Tell K8s to only run the fleet code here
+        env:
+        # Point the fleet at the mock contestant to receive the trades
+        - name: TARGET_URL
+          value: "http://mock-contestant-service:8080/order"
+        - name: REDPANDA_HOST
+          value: "redpanda-service:9092"
+        # Give the fleet plenty of CPU to generate high-throughput load
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "1Gi"

@@ -1,0 +1,67 @@
+# k8s/sandbox.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sandbox
+  template:
+    metadata:
+      labels:
+        app: sandbox
+    spec:
+      containers:
+      - name: sandbox
+        image: iicpc-platform:latest
+        imagePullPolicy: IfNotPresent
+        command: ["./sandbox-binary"]
+        ports:
+        - containerPort: 8081  # For file uploads and health checks
+        - containerPort: 50051 # For the gRPC bot commands
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+        # Standard health checks to automatically reboot if it freezes
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        # The magic volume mount that lets the Sandbox talk to Docker
+        volumeMounts:
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+      volumes:
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock
+
+---
+# The Service creates a permanent internal IP address for the Sandbox
+# so the Bot Fleet can always find it on port 50051
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-service
+spec:
+  selector:
+    app: sandbox
+  ports:
+  - protocol: TCP
+    port: 50051
+    targetPort: 50051
+  type: ClusterIP

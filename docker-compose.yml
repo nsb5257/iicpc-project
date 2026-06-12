@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # THE MESSAGE BUS: REDPANDA
+  # Used to stream metrics from the Bot Fleet 
+  # to the Telemetry Ingester instantly.
+  # ==========================================
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: iicpc-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1  # Limit CPU usage for local dev
+      - --reserve-memory 0M # Don't reserve memory aggressively
+      - --overprovisioned # Optimize for running on a shared machine
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"   # Kafka API port (Outside/Host access)
+      - "9644:9644"   # Admin API port
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+
+  # ==========================================
+  # THE TIME-SERIES DATABASE: TIMESCALEDB
+  # Used by the Telemetry Ingester to store
+  # and aggregate p50/p90/p99 latency metrics.
+  # ==========================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: iicpc-timescaledb
+    environment:
+      POSTGRES_USER: iicpc_admin
+      POSTGRES_PASSWORD: supersecretpassword
+      POSTGRES_DB: metrics_db
+    ports:
+      - "5432:5432" # Standard PostgreSQL port
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+
+  # ==========================================
+  # THE IN-MEMORY CACHE: REDIS
+  # Used for Phase 5 Real-Time Leaderboard Pub/Sub
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: iicpc-redis
+    ports:
+      - "6379:6379"
+
+# Declare named volumes so data persists even if we restart the containers
+volumes:
+  redpanda_data:
+  timescaledb_data:

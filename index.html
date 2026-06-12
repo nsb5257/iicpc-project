@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>IICPC Leaderboard 2026</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e2f; color: #fff; padding: 40px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        h1 { margin: 0; color: #00d2ff; }
+        .status { font-weight: bold; color: #f39c12; }
+        table { width: 100%; border-collapse: collapse; background-color: #2a2a40; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #3a3a50; }
+        th { background-color: #33334d; color: #aaa; text-transform: uppercase; font-size: 14px; }
+        .score { font-weight: bold; color: #2ecc71; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>IICPC Live Leaderboard</h1>
+        <div class="status" id="connection-status">Connecting to Telemetry...</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Contestant Team</th>
+                <th>Throughput (TPS)</th>
+                <th>P90 Latency (ms)</th>
+                <th>Composite Score</th>
+            </tr>
+        </thead>
+        <tbody id="leaderboard-body">
+            <tr>
+                <td colspan="4" style="text-align: center; color: #777;">Waiting for first telemetry tick...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        const statusEl = document.getElementById('connection-status');
+        const tbody = document.getElementById('leaderboard-body');
+
+        // 1. Establish the WebSocket connection
+        // window.location.host automatically gets the correct IP/Port (e.g., localhost:8081)
+        const ws = new WebSocket('ws://' + window.location.host + '/ws');
+
+        // 2. Handle connection opening
+        ws.onopen = () => {
+            statusEl.textContent = '🟢 LIVE (WebSocket Connected)';
+            statusEl.style.color = '#2ecc71';
+        };
+
+        // 3. Handle incoming Redis/Go messages
+        ws.onmessage = (event) => {
+            // Parse the JSON string sent by our Go backend
+            const data = JSON.parse(event.data);
+
+            // Dynamically update the table HTML
+            tbody.innerHTML = `
+                <tr>
+                    <td><strong>${data.team_name}</strong></td>
+                    <td>${data.tps.toFixed(2)}</td>
+                    <td>${data.p90_latency_ms.toFixed(2)}</td>
+                    <td class="score">${data.composite_score.toFixed(2)}</td>
+                </tr>
+            `;
+        };
+
+        // 4. Handle connection loss
+        ws.onclose = () => {
+            statusEl.textContent = '🔴 DISCONNECTED';
+            statusEl.style.color = '#e74c3c';
+        };
+    </script>
+</body>
+</html>
