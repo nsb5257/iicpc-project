@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 // RunRequest exactly matches the required cross-file contract
 type RunRequest struct {
+	RunID        string `json:"run_id,omitempty"`
 	Endpoint     string `json:"endpoint"`
 	SubmissionID string `json:"submission_id"`
 	NumBots      int    `json:"num_bots"`
@@ -61,6 +63,12 @@ func ensureTopic(broker string, topic string, partitions int) error {
 	return nil
 }
 
+const (
+	maxNumBots   = 1000
+	maxNumOrders = 1000000
+	maxTPS       = 50000
+)
+
 func runHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -73,13 +81,32 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Endpoint == "" || req.SubmissionID == "" || req.NumBots <= 0 || req.NumOrders <= 0 || req.TPS <= 0 {
+	if req.Endpoint == "" || req.SubmissionID == "" {
 		http.Error(w, "Missing or invalid parameters", http.StatusBadRequest)
 		return
 	}
+	if req.NumBots <= 0 || req.NumBots > maxNumBots {
+		http.Error(w, fmt.Sprintf("num_bots must be between 1 and %d", maxNumBots), http.StatusBadRequest)
+		return
+	}
+	if req.NumOrders <= 0 || req.NumOrders > maxNumOrders {
+		http.Error(w, fmt.Sprintf("num_orders must be between 1 and %d", maxNumOrders), http.StatusBadRequest)
+		return
+	}
+	if req.TPS <= 0 || req.TPS > maxTPS {
+		http.Error(w, fmt.Sprintf("tps must be between 1 and %d", maxTPS), http.StatusBadRequest)
+		return
+	}
+	if req.RunID == "" {
+		req.RunID = fmt.Sprintf("%s-%d", req.SubmissionID, time.Now().UnixNano())
+	}
 
 	// Offload the heavy lifting to a background goroutine so we return quickly
-	go startLoadTest(req)
+	go func(rq RunRequest) {
+		if err := startLoadTest(rq); err != nil {
+			log.Printf("Load test failed for %s: %v", rq.RunID, err)
+		}
+	}(req)
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte(`{"status":"test_started"}`))

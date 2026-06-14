@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -98,6 +99,9 @@ CMD ["./bot"]
 	_ = addFileToTar(sourceFilename, string(codeBytes))
 	tarWriter.Close()
 
+	// Remove any previous image tag so failed rebuilds cannot accidentally reuse stale images.
+	_, _ = cli.ImageRemove(ctx, imageName, image.RemoveOptions{Force: true, PruneChildren: true})
+
 	buildOptions := types.ImageBuildOptions{
 		Tags:   []string{imageName},
 		Remove: true,
@@ -109,16 +113,42 @@ CMD ["./bot"]
 	}
 	defer buildResponse.Body.Close()
 
-	_, err = io.Copy(os.Stdout, buildResponse.Body)
-	if err != nil {
-		return err
+	type buildMessage struct {
+		Stream      string `json:"stream"`
+		Error       string `json:"error"`
+		ErrorDetail struct {
+			Message string `json:"message"`
+		} `json:"errorDetail"`
+	}
+
+	decoder := json.NewDecoder(buildResponse.Body)
+	for {
+		var msg buildMessage
+		if err := decoder.Decode(&msg); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		if msg.Stream != "" {
+			fmt.Print(msg.Stream)
+		}
+		if msg.Error != "" {
+			return fmt.Errorf("docker build failed: %s", msg.Error)
+		}
+		if msg.ErrorDetail.Message != "" {
+			return fmt.Errorf("docker build failed: %s", msg.ErrorDetail.Message)
+		}
 	}
 
 	return nil
 }
 
 // runSubmissionContainer creates and starts a container mapped to the deterministic port
-func runSubmissionContainer(ctx context.Context, cli *client.Client, imageName string, hostPort int) (string, error) {
+func runSubmissionContainer(ctx context.Context, cli *client.Client, submissionID, imageName string, hostPort int) (string, error) {
+	containerName := fmt.Sprintf("submission-%s", submissionID)
+	_ = cli.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true, RemoveVolumes: true})
+
 	containerConfig := &container.Config{
 		Image: imageName,
 		ExposedPorts: nat.PortSet{
@@ -146,20 +176,25 @@ func runSubmissionContainer(ctx context.Context, cli *client.Client, imageName s
 		},
 	}
 
-	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, "")
+	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %v", err)
 	}
 
+	cleanup := func(reason error) (string, error) {
+		_ = cli.ContainerStop(ctx, resp.ID, container.StopOptions{})
+		_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true, RemoveVolumes: true})
+		return "", reason
+	}
+
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return "", fmt.Errorf("failed to start container: %v", err)
+		return cleanup(fmt.Errorf("failed to start container: %v", err))
 	}
 
 	// Connect running container to the internal isolated network
 	err = cli.NetworkConnect(ctx, "iicpc-sandbox-net", resp.ID, &network.EndpointSettings{})
 	if err != nil {
-		cli.ContainerKill(ctx, resp.ID, "SIGKILL")
-		return "", fmt.Errorf("failed to connect container to internal network: %v", err)
+		return cleanup(fmt.Errorf("failed to connect container to internal network: %v", err))
 	}
 
 	return resp.ID, nil

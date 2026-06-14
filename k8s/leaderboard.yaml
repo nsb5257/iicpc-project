@@ -15,8 +15,9 @@ spec:
       containers:
       - name: leaderboard
         image: us-central1-docker.pkg.dev/active-freehold-499017-q0/iicpc-repo/iicpc-platform:latest
-        command: ["./leaderboard-binary"]
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
+        command:
+          - ./leaderboard-binary
         ports:
         - containerPort: 8085
         env:
@@ -52,7 +53,7 @@ spec:
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /ready
+            path: /health
             port: 8085
           initialDelaySeconds: 5
           periodSeconds: 5

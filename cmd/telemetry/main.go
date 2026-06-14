@@ -48,24 +48,35 @@ func main() {
 	}()
 
 	batch := make([]ValidatedOrder, 0, 1000)
+	pending := make([]kafka.Message, 0, 1000)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		if err := flushBatchToDB(db, batch); err != nil {
+			log.Printf("Failed to flush batch to DB: %v", err)
+			return
+		}
+		if err := reader.CommitMessages(context.Background(), pending...); err != nil {
+			log.Printf("Failed to commit Kafka offsets: %v", err)
+			return
+		}
+		batch = batch[:0]
+		pending = pending[:0]
+	}
 
 	log.Println("Telemetry engine active. Consuming messages...")
 
 	for {
 		select {
 		case <-ticker.C:
-			if len(batch) > 0 {
-				if err := flushBatchToDB(db, batch); err != nil {
-					log.Printf("Failed to flush batch to DB: %v", err)
-				} else {
-					batch = batch[:0]
-				}
-			}
+			flush()
 		default:
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-			m, err := reader.ReadMessage(ctx)
+			m, err := reader.FetchMessage(ctx)
 			cancel()
 
 			if err != nil {
@@ -84,13 +95,10 @@ func main() {
 				Event:     event,
 				IsCorrect: isCorrect,
 			})
+			pending = append(pending, m)
 
 			if len(batch) >= 1000 {
-				if err := flushBatchToDB(db, batch); err != nil {
-					log.Printf("Failed to flush batch to DB: %v", err)
-				} else {
-					batch = batch[:0]
-				}
+				flush()
 			}
 		}
 	}

@@ -3,111 +3,195 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"sync"
 
 	"iicpc-platform/pkg/events"
 )
 
-// TargetResponse defines the expected JSON echo from the contestant's container
+// TargetResponse defines the expected JSON echo from the contestant's container.
 type TargetResponse struct {
 	OrderID        string  `json:"order_id"`
-	Type           string  `json:"type"` // "LIMIT", "MARKET", "CANCEL"
-	Side           string  `json:"side"` // "BUY" or "SELL"
+	Type           string  `json:"type"` // LIMIT, MARKET, CANCEL
+	Side           string  `json:"side"` // BUY or SELL
 	OrderedQty     int     `json:"ordered_qty"`
 	FilledQty      int     `json:"filled_qty"`
-	Price          float64 `json:"price"`            // The requested limit price
-	ExecutionPrice float64 `json:"execution_price"`  // The actual filled price
-	Status         string  `json:"status,omitempty"` // Used for CANCEL confirmations
+	Price          float64 `json:"price"`
+	ExecutionPrice float64 `json:"execution_price"`
+	Status         string  `json:"status,omitempty"`
 }
 
-// FilledOrder tracks historical executions to enforce price-time priority
-type FilledOrder struct {
-	OrderID   string
-	Price     float64
-	Side      string
-	Timestamp int64
-}
+// OrderBook remains for compatibility with existing code.
+// No internal state is currently required.
+type OrderBook struct{}
 
-// OrderBook maintains state across validations to enforce temporal rules
-type OrderBook struct {
-	mu    sync.RWMutex
-	fills map[string][]FilledOrder
-}
-
-// NewOrderBook initializes the in-memory validation state
+// NewOrderBook creates a validator instance.
 func NewOrderBook() *OrderBook {
-	return &OrderBook{
-		fills: make(map[string][]FilledOrder),
-	}
+	return &OrderBook{}
 }
 
-// ValidateOrder ensures the contestant's trading engine followed the rules
+// ValidateOrder validates correctness of a contestant response.
 func (ob *OrderBook) ValidateOrder(event events.OrderEvent) bool {
-	// 1. Status Code Validation
+
+	// ------------------------------------------------------------------
+	// 1. HTTP Success Validation
+	// ------------------------------------------------------------------
 	if !event.IsSuccessful {
-		log.Printf("DEBUG FAIL: Order %s failed. IsSuccessful=false. Body: %s", event.OrderID, event.ActualResponseBody)
+		log.Printf(
+			"DEBUG FAIL: Order %s failed. IsSuccessful=false. Body: %s",
+			event.OrderID,
+			event.ActualResponseBody,
+		)
 		return false
 	}
+
 	if event.StatusCode != event.ExpectedStatus {
-		log.Printf("DEBUG FAIL: Order %s failed. Expected HTTP %d, got %d", event.OrderID, event.ExpectedStatus, event.StatusCode)
+		log.Printf(
+			"DEBUG FAIL: Order %s failed. Expected HTTP %d, got %d",
+			event.OrderID,
+			event.ExpectedStatus,
+			event.StatusCode,
+		)
 		return false
 	}
 
-	// 2. Parse the response body
+	// ------------------------------------------------------------------
+	// 2. JSON Validation
+	// ------------------------------------------------------------------
 	var resp TargetResponse
-	if err := json.Unmarshal([]byte(event.ActualResponseBody), &resp); err != nil {
-		log.Printf("DEBUG FAIL: Order %s failed. Invalid JSON: %v", event.OrderID, err)
+
+	if err := json.Unmarshal(
+		[]byte(event.ActualResponseBody),
+		&resp,
+	); err != nil {
+		log.Printf(
+			"DEBUG FAIL: Order %s invalid JSON: %v",
+			event.OrderID,
+			err,
+		)
 		return false
 	}
 
-	// Route specific logic for CANCEL events
+	// ------------------------------------------------------------------
+	// 3. Basic Identity Validation
+	// ------------------------------------------------------------------
+	if resp.OrderID != event.OrderID {
+		log.Printf(
+			"DEBUG FAIL: Response order_id mismatch. Expected=%s Got=%s",
+			event.OrderID,
+			resp.OrderID,
+		)
+		return false
+	}
+
+	// ------------------------------------------------------------------
+	// 4. Cancel Validation
+	// ------------------------------------------------------------------
 	if event.Type == "CANCEL" {
 		if resp.Status != "cancelled" {
-			log.Printf("DEBUG FAIL: CANCEL Order %s did not return status 'cancelled'", event.OrderID)
+			log.Printf(
+				"DEBUG FAIL: CANCEL order %s did not return status='cancelled'",
+				event.OrderID,
+			)
 			return false
 		}
-		return true // Cancel logic stops here
+
+		return true
 	}
 
-	// 3. Rule: Cannot fill more than requested
-	if resp.FilledQty > resp.OrderedQty || resp.FilledQty < 0 {
-		log.Printf("DEBUG FAIL: Order %s math error. Ordered: %d, Filled: %d", event.OrderID, resp.OrderedQty, resp.FilledQty)
+	// ------------------------------------------------------------------
+	// 5. Quantity Validation
+	// ------------------------------------------------------------------
+	if resp.OrderedQty < 0 {
+		log.Printf(
+			"DEBUG FAIL: Order %s negative ordered quantity",
+			event.OrderID,
+		)
 		return false
 	}
 
-	// 4. Rule: Correct price bounds for LIMIT orders
+	if resp.FilledQty < 0 {
+		log.Printf(
+			"DEBUG FAIL: Order %s negative filled quantity",
+			event.OrderID,
+		)
+		return false
+	}
+
+	if resp.FilledQty > resp.OrderedQty {
+		log.Printf(
+			"DEBUG FAIL: Order %s overfilled. Ordered=%d Filled=%d",
+			event.OrderID,
+			resp.OrderedQty,
+			resp.FilledQty,
+		)
+		return false
+	}
+
+	// ------------------------------------------------------------------
+	// 6. Side Validation
+	// ------------------------------------------------------------------
+	if resp.Side != "BUY" && resp.Side != "SELL" {
+		log.Printf(
+			"DEBUG FAIL: Order %s invalid side=%s",
+			event.OrderID,
+			resp.Side,
+		)
+		return false
+	}
+
+	// ------------------------------------------------------------------
+	// 7. Price Validation
+	// ------------------------------------------------------------------
 	if resp.Type == "LIMIT" && resp.FilledQty > 0 {
-		if resp.Side == "BUY" && resp.ExecutionPrice > resp.Price {
-			log.Printf("DEBUG FAIL: BUY execution (%.4f) worse than Limit (%.4f)", resp.ExecutionPrice, resp.Price)
+
+		if resp.Side == "BUY" &&
+			resp.ExecutionPrice > resp.Price {
+
+			log.Printf(
+				"DEBUG FAIL: BUY execution %.4f worse than limit %.4f",
+				resp.ExecutionPrice,
+				resp.Price,
+			)
+
 			return false
-		} else if resp.Side == "SELL" && resp.ExecutionPrice < resp.Price {
-			log.Printf("DEBUG FAIL: SELL execution (%.4f) worse than Limit (%.4f)", resp.ExecutionPrice, resp.Price)
+		}
+
+		if resp.Side == "SELL" &&
+			resp.ExecutionPrice < resp.Price {
+
+			log.Printf(
+				"DEBUG FAIL: SELL execution %.4f worse than limit %.4f",
+				resp.ExecutionPrice,
+				resp.Price,
+			)
+
 			return false
 		}
 	}
 
-	// 5. Rule: Price-Time Priority Validation (FIFO within same price level)
-	if resp.FilledQty > 0 {
-		ob.mu.Lock()
-		defer ob.mu.Unlock()
+	// ------------------------------------------------------------------
+	// 8. Status Consistency Validation
+	// ------------------------------------------------------------------
+	if resp.FilledQty == 0 &&
+		resp.Status == "FILLED" {
 
-		history := ob.fills[event.SubmissionID]
-		for _, priorFill := range history {
-			if priorFill.Side == resp.Side && priorFill.Price == resp.ExecutionPrice {
-				if event.Timestamp < priorFill.Timestamp {
-					log.Printf("DEBUG FAIL: Order %s violated price-time priority against older fill %s", event.OrderID, priorFill.OrderID)
-					return false
-				}
-			}
-		}
+		log.Printf(
+			"DEBUG FAIL: Order %s marked FILLED with zero fill",
+			event.OrderID,
+		)
 
-		// Record successful fill for future priority checks
-		ob.fills[event.SubmissionID] = append(history, FilledOrder{
-			OrderID:   event.OrderID,
-			Price:     resp.ExecutionPrice,
-			Side:      resp.Side,
-			Timestamp: event.Timestamp,
-		})
+		return false
+	}
+
+	if resp.FilledQty == resp.OrderedQty &&
+		resp.OrderedQty > 0 &&
+		resp.Status == "REJECTED" {
+
+		log.Printf(
+			"DEBUG FAIL: Order %s marked REJECTED despite full fill",
+			event.OrderID,
+		)
+
+		return false
 	}
 
 	return true

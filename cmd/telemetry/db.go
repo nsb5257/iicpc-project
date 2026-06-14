@@ -56,6 +56,7 @@ func initDB() *sql.DB {
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS order_metrics (
 		time TIMESTAMPTZ NOT NULL,
+		run_id TEXT NOT NULL,
 		order_id TEXT NOT NULL,
 		submission_id TEXT NOT NULL,
 		latency_ms BIGINT NOT NULL,
@@ -72,8 +73,8 @@ func initDB() *sql.DB {
 	}
 
 	createIndexSQL := `
-	CREATE INDEX IF NOT EXISTS idx_metrics_sub_time 
-	ON order_metrics (submission_id, time DESC) 
+	CREATE INDEX IF NOT EXISTS idx_metrics_run_time 
+	ON order_metrics (run_id, time DESC) 
 	WHERE is_successful = TRUE AND is_correct = TRUE;`
 	if _, err := db.Exec(createIndexSQL); err != nil {
 		log.Printf("Failed to create index: %v", err)
@@ -93,16 +94,16 @@ func flushBatchToDB(db *sql.DB, batch []ValidatedOrder) error {
 	}
 	defer txn.Rollback()
 
-	stmt, err := txn.Prepare(pq.CopyIn("order_metrics", "time", "order_id", "submission_id", "latency_ms", "is_successful", "is_correct"))
+	stmt, err := txn.Prepare(pq.CopyIn("order_metrics", "time", "run_id", "order_id", "submission_id", "latency_ms", "is_successful", "is_correct"))
 	if err != nil {
 		return fmt.Errorf("prepare statement: %w", err)
 	}
-	defer stmt.Close()
 
 	for _, item := range batch {
 		timestamp := time.Unix(0, item.Event.SentAt)
 		if _, err := stmt.Exec(
 			timestamp,
+			item.Event.RunID,
 			item.Event.OrderID,
 			item.Event.SubmissionID,
 			item.Event.LatencyMs,
@@ -114,7 +115,11 @@ func flushBatchToDB(db *sql.DB, batch []ValidatedOrder) error {
 	}
 
 	if _, err := stmt.Exec(); err != nil {
+		_ = stmt.Close()
 		return fmt.Errorf("flush copy: %w", err)
+	}
+	if err := stmt.Close(); err != nil {
+		return fmt.Errorf("close copy statement: %w", err)
 	}
 
 	if err := txn.Commit(); err != nil {

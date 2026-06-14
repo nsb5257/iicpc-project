@@ -60,6 +60,7 @@ Icon
 .idea/
 *.swp
 *.swo
+# Terraform state and provider cache
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*

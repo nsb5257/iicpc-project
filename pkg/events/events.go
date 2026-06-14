@@ -2,6 +2,7 @@ package events
 
 // OrderEvent strictly enforces the cross-service contract via Kafka
 type OrderEvent struct {
+	RunID              string `json:"run_id"`
 	OrderID            string `json:"order_id"`
 	SubmissionID       string `json:"submission_id"`
 	Type               string `json:"type"`      // LIMIT, MARKET, CANCEL

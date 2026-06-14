@@ -13,6 +13,7 @@ import (
 
 // LeaderboardStats matches the contract and UI expectations
 type LeaderboardStats struct {
+	RunID        string  `json:"run_id"`
 	SubmissionID string  `json:"submission_id"`
 	TPS          float64 `json:"tps"`
 	P50Latency   float64 `json:"p50_latency_ms"`
@@ -29,6 +30,7 @@ func runScoringEngine(db *sql.DB, rdb *redis.Client) {
 	// Aggregates over a rolling 15-minute window with division-by-zero protection
 	query := `
 		SELECT 
+			run_id,
 			submission_id,
 			COALESCE(COUNT(*) / NULLIF(EXTRACT(EPOCH FROM (MAX(time) - MIN(time))), 0), 0) as tps,
 			COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms), 0) as p50_latency,
@@ -38,7 +40,7 @@ func runScoringEngine(db *sql.DB, rdb *redis.Client) {
 		WHERE is_successful = TRUE 
 		  AND is_correct = TRUE
 		  AND time > NOW() - INTERVAL '15 minutes'
-		GROUP BY submission_id
+		GROUP BY run_id, submission_id
 		HAVING COUNT(*) > 1;`
 
 	for range ticker.C {
@@ -53,6 +55,7 @@ func runScoringEngine(db *sql.DB, rdb *redis.Client) {
 		for rows.Next() {
 			var stats LeaderboardStats
 			if err := rows.Scan(
+				&stats.RunID,
 				&stats.SubmissionID,
 				&stats.TPS,
 				&stats.P50Latency,

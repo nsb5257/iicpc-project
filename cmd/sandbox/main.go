@@ -65,12 +65,19 @@ func main() {
 	app := &AppContext{DockerClient: cli}
 
 	// Start background janitor
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
-		for range ticker.C {
-			log.Println("Running scheduled Docker image cleanup...")
-			if err := cleanupOldImages(context.Background(), cli); err != nil {
-				log.Printf("Cleanup error: %v", err)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Running scheduled Docker image cleanup...")
+				if err := cleanupOldImages(context.Background(), cli); err != nil {
+					log.Printf("Cleanup error: %v", err)
+				}
+			case <-cleanupCtx.Done():
+				return
 			}
 		}
 	}()
@@ -115,6 +122,7 @@ func main() {
 	go func() {
 		sig := <-sigChan
 		log.Printf("Received signal: %v. Shutting down gracefully...", sig)
+		cleanupCancel()
 		httpServer.Shutdown(context.Background())
 		grpcServer.GracefulStop()
 	}()

@@ -22,13 +22,21 @@ spec:
         - containerPort: 8081  
         - containerPort: 50051 
         env:
-        - name: NODE_IP
+        - name: POD_IP
           valueFrom:
             fieldRef:
-              fieldPath: status.hostIP
+              fieldPath: status.podIP
         # Crucial: Tell the Go client to talk to the sidecar instead of a socket
         - name: DOCKER_HOST
           value: "tcp://localhost:2375"
+        - name: FLEET_RUN_URL
+          value: "http://fleet-service:8080/run"
+        - name: BENCH_NUM_BOTS
+          value: "200"
+        - name: BENCH_NUM_ORDERS
+          value: "10000"
+        - name: BENCH_TPS
+          value: "500"
         resources:
           requests:
             cpu: "500m"

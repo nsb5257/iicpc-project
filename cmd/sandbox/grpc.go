@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/docker/docker/api/types/container"
 	pb "iicpc-platform/pb"
 )
 
@@ -47,16 +48,10 @@ func (s *SandboxServer) ExecuteSubmission(ctx context.Context, req *pb.ExecuteRe
 		return &pb.ExecuteResponse{Success: false, Message: err.Error()}, nil
 	}
 
-	// Dynamic IP resolution for Kubernetes environments
-	nodeIP := os.Getenv("NODE_IP")
-	if nodeIP == "" {
-		nodeIP = ip
-	}
-
 	return &pb.ExecuteResponse{
 		Success:       true,
 		Message:       "Container is running",
-		ContainerIp:   nodeIP,
+		ContainerIp:   ip,
 		ContainerPort: int32(port),
 	}, nil
 }
@@ -70,16 +65,18 @@ func (app *AppContext) executeSubmissionInternal(ctx context.Context, submission
 	}
 
 	hostPort := getDeterministicPort(submissionID)
+	targetIP := resolveTargetIP()
 
-	_, err := runSubmissionContainer(ctx, app.DockerClient, imageName, hostPort)
+	containerID, err := runSubmissionContainer(ctx, app.DockerClient, submissionID, imageName, hostPort)
 	if err != nil {
 		return "", 0, fmt.Errorf("run failed: %v", err)
 	}
 
-	endpoint := fmt.Sprintf("127.0.0.1:%d", hostPort)
+	endpoint := fmt.Sprintf("%s:%d", targetIP, hostPort)
 	if err := waitForReady(endpoint); err != nil {
+		_ = app.DockerClient.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true, RemoveVolumes: true})
 		return "", 0, fmt.Errorf("readiness check failed: %v", err)
 	}
 
-	return "127.0.0.1", hostPort, nil
+	return targetIP, hostPort, nil
 }

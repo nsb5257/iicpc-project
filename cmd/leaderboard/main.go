@@ -73,6 +73,10 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})
+
 	http.HandleFunc("/ws", handleWebSocket)
 
 	port := ":8085"
