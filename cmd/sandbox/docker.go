@@ -38,8 +38,8 @@ func waitForReady(endpoint string) error {
 }
 
 // buildSubmissionImage packages the user's code and specific Dockerfile into a tarball
-func buildSubmissionImage(ctx context.Context, cli *client.Client, sourceFilePath, imageName, language string) error {
-	log.Printf("Building Docker image '%s' for %s (lang: %s)...", imageName, sourceFilePath, language)
+func buildSubmissionImage(ctx context.Context, cli *client.Client, sourceFilePath, imageName, language, artifactType string) error {
+	log.Printf("Building Docker image '%s' for %s (lang: %s, artifact: %s)...", imageName, sourceFilePath, language, artifactType)
 
 	codeBytes, err := os.ReadFile(sourceFilePath)
 	if err != nil {
@@ -49,34 +49,45 @@ func buildSubmissionImage(ctx context.Context, cli *client.Client, sourceFilePat
 	var dockerfile string
 	var sourceFilename string
 
-	switch strings.ToLower(language) {
-	case "cpp":
-		sourceFilename = "main.cpp"
+	if artifactType == "binary" {
+		sourceFilename = "bot"
 		dockerfile = `
+FROM alpine:3.19
+WORKDIR /app
+COPY bot .
+RUN chmod +x ./bot
+CMD ["./bot"]
+`
+	} else {
+		switch strings.ToLower(language) {
+		case "cpp":
+			sourceFilename = "main.cpp"
+			dockerfile = `
 FROM gcc:13
 WORKDIR /app
 COPY main.cpp .
 RUN g++ -O3 -o bot main.cpp
 CMD ["./bot"]
 `
-	case "rust":
-		sourceFilename = "main.rs"
-		dockerfile = `
+		case "rust":
+			sourceFilename = "main.rs"
+			dockerfile = `
 FROM rust:1.77-alpine
 WORKDIR /app
 COPY main.rs .
 RUN rustc -O -o bot main.rs
 CMD ["./bot"]
 `
-	default: // "go"
-		sourceFilename = "main.go"
-		dockerfile = `
+		default: // "go"
+			sourceFilename = "main.go"
+			dockerfile = `
 FROM golang:1.22-alpine
 WORKDIR /app
 COPY main.go .
 RUN go build -o bot main.go
 CMD ["./bot"]
 `
+		}
 	}
 
 	var buf bytes.Buffer

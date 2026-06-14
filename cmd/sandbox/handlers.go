@@ -9,14 +9,13 @@ import (
 	"os"
 )
 
-// uploadHandler processes multipart form uploads for bot submissions
 func (app *AppContext) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -31,14 +30,23 @@ func (app *AppContext) uploadHandler(w http.ResponseWriter, r *http.Request) {
 		language = "go"
 	}
 
-	file, _, err := r.FormFile("source_file")
-	if err != nil {
-		http.Error(w, "source_file is required", http.StatusBadRequest)
-		return
+	artifactType := r.FormValue("artifact_type")
+	if artifactType == "" {
+		artifactType = "source"
+	}
+
+	file, _, err := r.FormFile("binary_file")
+	if err == nil {
+		artifactType = "binary"
+	} else {
+		file, _, err = r.FormFile("source_file")
+		if err != nil {
+			http.Error(w, "source_file or binary_file is required", http.StatusBadRequest)
+			return
+		}
 	}
 	defer file.Close()
 
-	// Save file temporarily using a unique path to avoid concurrent upload races
 	tmpFile, err := os.CreateTemp("", fmt.Sprintf("submission-%s-*", submissionID))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -59,8 +67,7 @@ func (app *AppContext) uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Execute via internal engine
-	ip, port, err := app.executeSubmissionInternal(r.Context(), submissionID, tmpPath, language)
+	ip, port, err := app.executeSubmissionInternal(r.Context(), submissionID, tmpPath, language, artifactType)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

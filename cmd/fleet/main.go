@@ -24,6 +24,7 @@ type RunRequest struct {
 	NumBots      int    `json:"num_bots"`
 	NumOrders    int    `json:"num_orders"`
 	TPS          int    `json:"tps"`
+	Protocol     string `json:"protocol"` // "rest" (default) or "websocket"
 }
 
 var kafkaWriter *kafka.Writer

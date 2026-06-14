@@ -8,8 +8,9 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/docker/docker/api/types/container"
 	pb "iicpc-platform/pb"
+
+	"github.com/docker/docker/api/types/container"
 )
 
 var validIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -41,7 +42,7 @@ func (s *SandboxServer) ExecuteSubmission(ctx context.Context, req *pb.ExecuteRe
 		language = "go"
 	}
 
-	ip, port, err := s.appCtx.executeSubmissionInternal(ctx, req.SubmissionId, req.SourceFilePath, language)
+	ip, port, err := s.appCtx.executeSubmissionInternal(ctx, req.SubmissionId, req.SourceFilePath, language, "source")
 	defer os.Remove(req.SourceFilePath)
 
 	if err != nil {
@@ -57,10 +58,12 @@ func (s *SandboxServer) ExecuteSubmission(ctx context.Context, req *pb.ExecuteRe
 }
 
 // executeSubmissionInternal handles the core logic for both HTTP and gRPC
-func (app *AppContext) executeSubmissionInternal(ctx context.Context, submissionID, sourceFilePath, language string) (string, int, error) {
+func (app *AppContext) executeSubmissionInternal(ctx context.Context, submissionID, sourceFilePath, language, artifactType string) (string, int, error) {
+
 	imageName := fmt.Sprintf("submission-%s", submissionID)
 
-	if err := buildSubmissionImage(ctx, app.DockerClient, sourceFilePath, imageName, language); err != nil {
+	// Pass artifactType as the 6th argument to buildSubmissionImage
+	if err := buildSubmissionImage(ctx, app.DockerClient, sourceFilePath, imageName, language, artifactType); err != nil {
 		return "", 0, fmt.Errorf("build failed: %v", err)
 	}
 
