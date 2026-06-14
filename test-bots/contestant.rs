@@ -136,7 +136,7 @@ fn main() {
                     let lock = rx.lock().unwrap();
                     lock.recv().unwrap()
                 };
-                handle_client(stream, b);
+                handle_client(stream, Arc::clone(&b));
             }
         });
     }
