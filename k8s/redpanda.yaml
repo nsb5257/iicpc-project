@@ -1,3 +1,17 @@
+# 1. The Persistent Volume Claim: Ensures Kafka messages survive pod restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redpanda-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# 2. The Deployment: Manages the Redpanda Broker Container
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,6 +26,15 @@ spec:
       labels:
         app: redpanda
     spec:
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command: ["sh", "-c", "chown -R 101:101 /var/lib/redpanda/data"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: redpanda-storage
+          mountPath: /var/lib/redpanda/data
       containers:
       - name: redpanda
         image: docker.redpanda.com/redpandadata/redpanda:latest
@@ -26,14 +49,25 @@ spec:
           - 0M
           - --node-id
           - "0"
-          # CRITICAL KAFKA NETWORKING FIX:
+          # Internal networking setup
           - --kafka-addr
           - PLAINTEXT://0.0.0.0:9092
           - --advertise-kafka-addr
           - PLAINTEXT://redpanda-service:9092
         ports:
           - containerPort: 9092
+        # Mount the persistent storage inside the container
+        volumeMounts:
+        - name: redpanda-storage
+          mountPath: /var/lib/redpanda/data
+      # Define the volume backed by our PVC
+      volumes:
+      - name: redpanda-storage
+        persistentVolumeClaim:
+          claimName: redpanda-pvc
+
 ---
+# 3. The Service: The Internal Phonebook / DNS
 apiVersion: v1
 kind: Service
 metadata:

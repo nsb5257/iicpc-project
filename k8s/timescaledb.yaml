@@ -1,10 +1,23 @@
-# 1. The Deployment: Manages the actual Database Container
+# 1. The Persistent Volume Claim: Ensures data survives pod restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timescaledb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# 2. The Deployment: Manages the actual Database Container
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: timescaledb-deployment
 spec:
-  replicas: 1 # We only want 1 database running to avoid data conflicts
+  replicas: 1 # Strictly 1 to avoid data/write conflicts
   selector:
     matchLabels:
       app: timescaledb
@@ -19,15 +32,34 @@ spec:
         ports:
         - containerPort: 5432
         env:
+        # Securely fetch credentials from our K8s Secret Vault
         - name: POSTGRES_USER
-          value: "iicpc_admin"
+          valueFrom:
+            secretKeyRef:
+              name: iicpc-secrets
+              key: username
         - name: POSTGRES_PASSWORD
-          value: "supersecretpassword"
+          valueFrom:
+            secretKeyRef:
+              name: iicpc-secrets
+              key: db-password
+        # DB Name is not a secret, safe to declare here
         - name: POSTGRES_DB
           value: "metrics_db"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        # Mount the persistent storage inside the container
+        volumeMounts:
+        - name: timescaledb-storage
+          mountPath: /var/lib/postgresql/data
+      # Define the volume backed by our PVC
+      volumes:
+      - name: timescaledb-storage
+        persistentVolumeClaim:
+          claimName: timescaledb-pvc
 
 ---
-# 2. The Service: The Internal Phonebook / DNS
+# 3. The Service: The Internal Phonebook / DNS
 apiVersion: v1
 kind: Service
 metadata:

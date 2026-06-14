@@ -3,11 +3,10 @@
 
 # 1. Compile all Go microservices locally
 build:
-	go build -o fleet-binary cmd/fleet/main.go
-	go build -o telemetry-binary cmd/telemetry/main.go
-	go build -o leaderboard-binary cmd/leaderboard/main.go
-	go build -o sandbox-binary cmd/sandbox/main.go
-	go build -o mock-contestant-binary cmd/mock_contestant/main.go
+	go build -o fleet-binary ./cmd/fleet
+	go build -o telemetry-binary ./cmd/telemetry
+	go build -o leaderboard-binary ./cmd/leaderboard
+	go build -o sandbox-binary ./cmd/sandbox
 
 # 2. Package everything into the Docker shipping container
 build-docker:

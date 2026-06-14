@@ -1,26 +1,22 @@
 syntax = "proto3";
 
-// This tells the compiler to place the generated Go code in a package called "pb"
-option go_package = "iicpc-platform/pb";
-
 package sandbox;
 
-// 1. The Service Definition (The "API")
+option go_package = "iicpc-platform/pb";
+
 service SandboxService {
-  // ExecuteSubmission takes an ExecuteRequest and returns an ExecuteResponse
-  rpc ExecuteSubmission (ExecuteRequest) returns (ExecuteResponse);
+  rpc ExecuteSubmission (ExecuteRequest) returns (ExecuteResponse) {}
 }
 
-// 2. The Request Payload
 message ExecuteRequest {
   string submission_id = 1;
-  string source_file_path = 2; // e.g., "/tmp/submission-183749.go"
+  string source_file_path = 2;
+  string language = 3;
 }
 
-// 3. The Response Payload
 message ExecuteResponse {
   bool success = 1;
   string message = 2;
-  string container_ip = 3;     // The IP where the trading engine is listening
-  int32 container_port = 4;    // The port mapped by Docker (e.g., 32768)
+  string container_ip = 3;
+  int32 container_port = 4;
 }

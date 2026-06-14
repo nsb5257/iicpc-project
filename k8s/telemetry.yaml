@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: telemetry-deployment
 spec:
-  replicas: 2 # We can scale this up to handle massive order volume!
+  replicas: 1
   selector:
     matchLabels:
       app: telemetry
@@ -14,30 +14,43 @@ spec:
     spec:
       containers:
       - name: telemetry
-        image: iicpc-platform:latest # Standardized image name
-        command: ["./telemetry-binary"]
+        image: us-central1-docker.pkg.dev/active-freehold-499017-q0/iicpc-repo/iicpc-platform:latest
         imagePullPolicy: IfNotPresent
+        command: ["./telemetry-binary"]
+        ports:
+        - containerPort: 8083
         env:
         - name: DB_HOST
-          value: "timescaledb-service" 
-        - name: REDPANDA_HOST
-          value: "redpanda-service:9092"
-        # Pull credentials securely from our K8s Vault
+          value: "timescaledb-service"
+        - name: DB_PORT
+          value: "5432"
         - name: DB_USER
-          valueFrom:
-            secretKeyRef:
-              name: db-credentials
-              key: username
+          value: "iicpc_admin"
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: db-credentials
-              key: password
-        # Set strict CPU and Memory budgets
+              name: iicpc-secrets
+              key: db-password
+        - name: DB_NAME
+          value: "metrics_db"
+        - name: REDPANDA_HOST
+          value: "redpanda-service:9092"
         resources:
           requests:
-            cpu: "500m"
-            memory: "256Mi"
-          limits:
             cpu: "1000m"
             memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 5

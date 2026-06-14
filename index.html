@@ -4,14 +4,68 @@
     <meta charset="UTF-8">
     <title>IICPC Leaderboard 2026</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e2f; color: #fff; padding: 40px; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-        h1 { margin: 0; color: #00d2ff; }
-        .status { font-weight: bold; color: #f39c12; }
-        table { width: 100%; border-collapse: collapse; background-color: #2a2a40; border-radius: 8px; overflow: hidden; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #3a3a50; }
-        th { background-color: #33334d; color: #aaa; text-transform: uppercase; font-size: 14px; }
-        .score { font-weight: bold; color: #2ecc71; font-size: 18px; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #1e1e2f; 
+            color: #fff; 
+            padding: 40px; 
+            margin: 0;
+        }
+        .header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 2px solid #333; 
+            padding-bottom: 10px; 
+            margin-bottom: 20px; 
+        }
+        h1 { 
+            margin: 0; 
+            color: #00d2ff; 
+        }
+        .status { 
+            font-weight: bold; 
+            color: #f39c12; 
+            padding: 8px 12px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.2);
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            background-color: #2a2a40; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        th, td { 
+            padding: 15px; 
+            text-align: left; 
+            border-bottom: 1px solid #3a3a50; 
+        }
+        th { 
+            background-color: #33334d; 
+            color: #aaa; 
+            text-transform: uppercase; 
+            font-size: 14px; 
+            letter-spacing: 0.5px;
+        }
+        tr:hover {
+            background-color: #31314d;
+        }
+        .score { 
+            font-weight: bold; 
+            color: #2ecc71; 
+            font-size: 18px; 
+        }
+        .rank {
+            font-weight: bold;
+            color: #888;
+            width: 40px;
+        }
+        .rank-1 { color: #f1c40f; font-size: 1.1em; } /* Gold */
+        .rank-2 { color: #bdc3c7; font-size: 1.05em; } /* Silver */
+        .rank-3 { color: #cd7f32; font-size: 1.05em; } /* Bronze */
     </style>
 </head>
 <body>
@@ -24,15 +78,18 @@
     <table>
         <thead>
             <tr>
-                <th>Contestant Team</th>
+                <th class="rank">#</th>
+                <th>Submission ID</th>
                 <th>Throughput (TPS)</th>
+                <th>P50 Latency (ms)</th>
                 <th>P90 Latency (ms)</th>
+                <th>P99 Latency (ms)</th>
                 <th>Composite Score</th>
             </tr>
         </thead>
         <tbody id="leaderboard-body">
             <tr>
-                <td colspan="4" style="text-align: center; color: #777;">Waiting for first telemetry tick...</td>
+                <td colspan="7" style="text-align: center; color: #777; padding: 30px;">Waiting for first telemetry tick...</td>
             </tr>
         </tbody>
     </table>
@@ -41,37 +98,67 @@
         const statusEl = document.getElementById('connection-status');
         const tbody = document.getElementById('leaderboard-body');
 
-        // 1. Establish the WebSocket connection
-        // window.location.host automatically gets the correct IP/Port (e.g., localhost:8081)
-        const ws = new WebSocket('ws://' + window.location.host + '/ws');
+        // Establish the WebSocket connection
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        
+        let ws;
 
-        // 2. Handle connection opening
-        ws.onopen = () => {
-            statusEl.textContent = '🟢 LIVE (WebSocket Connected)';
-            statusEl.style.color = '#2ecc71';
-        };
+        function connectWebSocket() {
+            ws = new WebSocket(wsUrl);
 
-        // 3. Handle incoming Redis/Go messages
-        ws.onmessage = (event) => {
-            // Parse the JSON string sent by our Go backend
-            const data = JSON.parse(event.data);
+            ws.onopen = () => {
+                statusEl.textContent = '🟢 LIVE (WebSocket Connected)';
+                statusEl.style.color = '#2ecc71';
+            };
 
-            // Dynamically update the table HTML
-            tbody.innerHTML = `
-                <tr>
-                    <td><strong>${data.team_name}</strong></td>
-                    <td>${data.tps.toFixed(2)}</td>
-                    <td>${data.p90_latency_ms.toFixed(2)}</td>
-                    <td class="score">${data.composite_score.toFixed(2)}</td>
-                </tr>
-            `;
-        };
+            ws.onmessage = (event) => {
+                const dataArray = JSON.parse(event.data);
+                
+                if (!Array.isArray(dataArray) || dataArray.length === 0) {
+                    return;
+                }
 
-        // 4. Handle connection loss
-        ws.onclose = () => {
-            statusEl.textContent = '🔴 DISCONNECTED';
-            statusEl.style.color = '#e74c3c';
-        };
+                // Clear the table body
+                tbody.innerHTML = '';
+
+                // Iterate over the ranked array and build rows
+                dataArray.forEach((contestant, index) => {
+                    const rank = index + 1;
+                    let rankClass = '';
+                    if (rank === 1) rankClass = 'rank-1';
+                    else if (rank === 2) rankClass = 'rank-2';
+                    else if (rank === 3) rankClass = 'rank-3';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="rank ${rankClass}">${rank}</td>
+                        <td><strong>${contestant.submission_id}</strong></td>
+                        <td>${contestant.tps.toFixed(2)}</td>
+                        <td>${contestant.p50_latency_ms.toFixed(2)}</td>
+                        <td>${contestant.p90_latency_ms.toFixed(2)}</td>
+                        <td>${contestant.p99_latency_ms.toFixed(2)}</td>
+                        <td class="score">${contestant.composite_score.toFixed(2)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = '🔴 DISCONNECTED. Reconnecting...';
+                statusEl.style.color = '#e74c3c';
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket encountered error: ', err, 'Closing socket');
+                ws.close();
+            };
+        }
+
+        // Initialize connection
+        connectWebSocket();
     </script>
 </body>
 </html>

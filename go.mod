@@ -5,6 +5,10 @@ go 1.26.2
 require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.7.0
+	github.com/gorilla/websocket v1.5.3
+	github.com/lib/pq v1.12.3
+	github.com/redis/go-redis/v9 v9.19.0
+	github.com/segmentio/kafka-go v0.4.51
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 )
@@ -20,9 +24,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
-	github.com/lib/pq v1.12.3 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
@@ -31,8 +33,6 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/redis/go-redis/v9 v9.19.0 // indirect
-	github.com/segmentio/kafka-go v0.4.51 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect

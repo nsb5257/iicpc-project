@@ -10,11 +10,10 @@ RUN go mod download
 COPY . .
 
 # Compile all microservices
-RUN go build -o fleet-binary cmd/fleet/main.go
-RUN go build -o telemetry-binary cmd/telemetry/main.go
-RUN go build -o leaderboard-binary cmd/leaderboard/main.go
-RUN go build -o sandbox-binary cmd/sandbox/main.go
-RUN go build -o mock-contestant-binary cmd/mock_contestant/main.go
+RUN go build -o fleet-binary ./cmd/fleet
+RUN go build -o telemetry-binary ./cmd/telemetry
+RUN go build -o leaderboard-binary ./cmd/leaderboard
+RUN go build -o sandbox-binary ./cmd/sandbox
 
 # Stage 2: Create a tiny production image
 FROM alpine:latest
@@ -25,7 +24,6 @@ COPY --from=builder /app/fleet-binary .
 COPY --from=builder /app/telemetry-binary .
 COPY --from=builder /app/leaderboard-binary .
 COPY --from=builder /app/sandbox-binary .
-COPY --from=builder /app/mock-contestant-binary .
 
 # Copy the HTML file required for the web server
 COPY index.html .

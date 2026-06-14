@@ -14,11 +14,11 @@ spec:
     spec:
       containers:
       - name: leaderboard
-        image: iicpc-platform:latest
+        image: us-central1-docker.pkg.dev/active-freehold-499017-q0/iicpc-repo/iicpc-platform:latest
         command: ["./leaderboard-binary"]
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8081
+        - containerPort: 8085
         env:
         - name: DB_HOST
           value: "timescaledb-service"
@@ -28,13 +28,13 @@ spec:
         - name: DB_USER
           valueFrom:
             secretKeyRef:
-              name: db-credentials
+              name: iicpc-secrets
               key: username
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: db-credentials
-              key: password
+              name: iicpc-secrets
+              key: db-password
         # Set a strict resource budget
         resources:
           requests:
@@ -47,13 +47,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8081
+            port: 8085
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /ready
-            port: 8081
+            port: 8085
           initialDelaySeconds: 5
           periodSeconds: 5
 ---
@@ -68,4 +68,4 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8081
+      targetPort: 8085
